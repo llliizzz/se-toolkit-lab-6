@@ -91,6 +91,10 @@ Examples: computers, servers, [virtual machines](./vm.md#what-is-a-vm).
 
 ### Local host
 
+A local [host](#host) is the [machine](#machine) you are currently working on — the one where your commands run.
+
+It is accessed directly, without going through a [network](#what-is-a-network). See [`localhost`](#localhost) for the [hostname](#hostname) that refers to it.
+
 ### Remote host
 
 A remote [host](#host) is a host that is not the [local host](#localhost) — it is accessed over a [network](#what-is-a-network).
