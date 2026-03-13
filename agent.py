@@ -707,8 +707,8 @@ def deterministic_answer(question: str, tools: ToolRecorder) -> tuple[str, str |
     for handler in [
         diagnose_bug,
         answer_from_api,
-        answer_from_wiki,
         answer_from_source,
+        answer_from_wiki,
     ]:
         result = handler(question, tools)
         if result is not None:
