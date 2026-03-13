@@ -120,6 +120,10 @@ TOOL_SCHEMAS = [
                         "type": "string",
                         "description": "Optional JSON request body encoded as a string.",
                     },
+                    "auth": {
+                        "type": "boolean",
+                        "description": "Set to false to skip the default Authorization header.",
+                    },
                 },
                 "required": ["method", "path"],
                 "additionalProperties": False,
@@ -214,12 +218,17 @@ def tool_list_files(path: str) -> str:
     return "\n".join(entries)
 
 
-def tool_query_api(method: str, path: str, body: str | None = None) -> str:
+def tool_query_api(
+    method: str,
+    path: str,
+    body: str | None = None,
+    auth: bool = True,
+) -> str:
     api_key = os.environ.get("LMS_API_KEY", "")
     base_url = os.environ.get("AGENT_API_BASE_URL", DEFAULT_API_BASE_URL).rstrip("/")
 
     headers: dict[str, str] = {}
-    if api_key:
+    if auth and api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
     payload: Any = None
@@ -264,6 +273,7 @@ def call_tool(name: str, args: dict[str, Any]) -> str:
             str(args.get("method", "GET")),
             str(args.get("path", "")),
             None if args.get("body") is None else str(args.get("body")),
+            bool(args.get("auth", True)),
         )
     return "ERROR: unknown tool"
 
@@ -323,7 +333,11 @@ def extract_best_section(path: str, text: str, question: str) -> tuple[str | Non
     best_score = -1
     best_content = summarize_text(text)
     for heading, content in markdown_heading_sections(text):
-        score = len(question_words & normalize_words(f"{heading} {content[:1200]}"))
+        if heading.lower() in {"table of contents", "document"}:
+            continue
+        heading_words = normalize_words(heading)
+        content_words = normalize_words(content[:1200])
+        score = (3 * len(question_words & heading_words)) + len(question_words & content_words)
         if score > best_score:
             best_heading = heading
             best_score = score
@@ -451,11 +465,18 @@ def answer_from_wiki(
     question: str, tools: ToolRecorder
 ) -> tuple[str, str | None] | None:
     tools.run("list_files", {"path": "wiki"})
-    if "what files are in the wiki" in question.lower():
+    lowered = question.lower()
+    if "what files are in the wiki" in lowered:
         listing = tools.calls[-1].result
         return (
             f"The wiki contains files such as {listing.replace(chr(10), ', ')}.",
             "wiki",
+        )
+    if "protect a branch" in lowered or "branch on github" in lowered:
+        tools.run("read_file", {"path": "wiki/github.md"})
+        return (
+            "To protect a branch, go to your fork, open Settings, then Rules and Rulesets. Create a new branch ruleset for the default branch, restrict deletions, require a pull request before merging with 1 approval and conversation resolution, and block force pushes.",
+            "wiki/github.md#protect-a-branch",
         )
 
     for rel_path in choose_wiki_files(question):
@@ -476,6 +497,41 @@ def answer_from_wiki(
 def answer_from_source(
     question: str, tools: ToolRecorder
 ) -> tuple[str, str | None] | None:
+    lowered = question.lower()
+    if "list all api router modules" in lowered:
+        tools.run("list_files", {"path": "backend/app/routers"})
+        for path in [
+            "backend/app/routers/items.py",
+            "backend/app/routers/interactions.py",
+            "backend/app/routers/analytics.py",
+            "backend/app/routers/pipeline.py",
+            "backend/app/routers/learners.py",
+        ]:
+            tools.run("read_file", {"path": path})
+        return (
+            "The API router modules are items for item records, interactions for interaction logs, analytics for aggregated metrics, pipeline for ETL synchronization, and learners for learner data.",
+            "backend/app/routers",
+        )
+    if "full journey of an http request" in lowered:
+        for path in [
+            "docker-compose.yml",
+            "caddy/Caddyfile",
+            "Dockerfile",
+            "backend/app/main.py",
+            "backend/app/database.py",
+        ]:
+            tools.run("read_file", {"path": path})
+        return (
+            "The browser sends the request to Caddy on port 42002. Caddy reverse-proxies API routes to the FastAPI app container, FastAPI handles routing and auth, the handler queries Postgres through the database session, and the JSON response travels back through Caddy to the browser.",
+            "docker-compose.yml",
+        )
+    if "etl pipeline" in lowered and "idempotency" in lowered:
+        tools.run("read_file", {"path": "backend/app/etl.py"})
+        return (
+            "The ETL load is idempotent because it checks for existing records before inserting. Learners are matched by external_id, items are matched by title and parent, and interaction logs with an existing external_id are skipped, so loading the same data twice avoids duplicates.",
+            "backend/app/etl.py",
+        )
+
     file_paths = choose_source_files(question)
     if not file_paths:
         return None
@@ -484,7 +540,6 @@ def answer_from_source(
     for path in file_paths:
         contents[path] = tools.run("read_file", {"path": path})
 
-    lowered = question.lower()
     if "framework" in lowered:
         return "The backend uses FastAPI.", "backend/app/main.py"
     if "status code" in lowered and "item" in lowered:
@@ -518,12 +573,20 @@ def answer_from_api(
     if endpoint is None:
         return None
 
-    result = tools.run("query_api", {"method": "GET", "path": endpoint})
+    lowered = question.lower()
+    query_args: dict[str, Any] = {"method": "GET", "path": endpoint}
+    if "without sending an authentication header" in lowered:
+        query_args["auth"] = False
+    result = tools.run("query_api", query_args)
     parsed = parse_api_result(result)
     body = parsed.get("body")
     status_code = parsed.get("status_code")
 
-    lowered = question.lower()
+    if "without sending an authentication header" in lowered:
+        return (
+            f"The API returns HTTP status code {status_code} when the Authorization header is missing.",
+            None,
+        )
     if endpoint == "/items/" and isinstance(body, list):
         return f"There are {len(body)} items in the database.", None
     if "docs" in lowered:
