@@ -14,10 +14,15 @@
   - [Check that `Python` works](#check-that-python-works)
   - [Select the `Python` interpreter](#select-the-python-interpreter)
   - [Check that the language server works](#check-that-the-language-server-works)
-- [Testing](#testing)
-  - [`pytest`](#pytest)
-  - [The `assert` statement](#the-assert-statement)
-- [`Pylance`](#pylance)
+- [Quality assurance tools](#quality-assurance-tools)
+  - [Dynamic analysis tools](#dynamic-analysis-tools)
+    - [The `assert` statement](#the-assert-statement)
+    - [`pytest`](#pytest)
+  - [Static analysis tools](#static-analysis-tools)
+    - [`Pylance`](#pylance)
+    - [`ruff` (linter)](#ruff-linter)
+  - [Code transformation tools](#code-transformation-tools)
+    - [`ruff` (formatter)](#ruff-formatter)
 
 ## What is `Python`
 
@@ -157,19 +162,29 @@ Complete these steps:
 
    <img alt="Type on hover" src="./images/python/type-on-hover.png" style="width:300px">
 
-## Testing
+## Quality assurance tools
 
-### `pytest`
+See [Quality assurance](./quality-assurance.md#what-is-quality-assurance).
 
-`pytest` is a testing framework for `Python`. It discovers and runs test functions automatically.
+Tools:
+
+- [Dynamic analysis tools](#dynamic-analysis-tools)
+- [Static analysis tools](#static-analysis-tools)
+- [Code transformation tools](#code-transformation-tools)
+
+### Dynamic analysis tools
+
+- [The `assert` statement](#the-assert-statement)
+- [`pytest`](#pytest)
 
 Docs:
 
-- [`pytest` documentation](https://docs.pytest.org/)
+- [testing](./quality-assurance.md#testing).
 
-### The `assert` statement
+#### The `assert` statement
 
-The `assert` statement checks that a condition is true (see [Assertion](./quality-assurance.md#assertion)). If the condition is false, the test fails with an `AssertionError`.
+The `assert` statement checks that a condition is true (see [Assertion](./quality-assurance.md#assertion)).
+If the condition is false, the test fails with an `AssertionError`.
 
 ```python
 assert result == expected
@@ -179,6 +194,39 @@ Docs:
 
 - [`assert` statement](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement)
 
-## `Pylance`
+#### `pytest`
+
+`pytest` is a testing framework for `Python`. It discovers and runs test functions automatically.
+
+Docs:
+
+- [`pytest` documentation](https://docs.pytest.org/)
+
+### Static analysis tools
+
+- [`Pylance`](#pylance)
+- [`ruff` (linter)](#ruff-linter)
+
+#### `Pylance`
 
 A [language server](./vs-code.md#language-server) for `Python` that provides static analysis features such as type checking and detection of undefined variables.
+
+#### `ruff` (linter)
+
+A fast [linter](./quality-assurance.md#linting) for `Python`.
+
+Docs:
+
+- [`ruff` documentation](https://docs.astral.sh/ruff/)
+
+### Code transformation tools
+
+- [`ruff` (formatter)]
+
+Docs:
+
+- [Code transformation](./quality-assurance.md#code-transformation)
+
+#### `ruff` (formatter)
+
+`ruff` checks code for errors and style violations and automatically rewrites files to enforce a consistent style (see [Code transformation](./quality-assurance.md#code-transformation)).
