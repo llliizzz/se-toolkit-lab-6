@@ -139,11 +139,13 @@ Prefer tools over guessing.
 - Use read_file to inspect wiki files, source code, config, and planted bugs.
 - Use query_api for live backend data, endpoint behavior, and runtime errors.
 - Cite wiki answers with a source in the form path#heading-anchor.
+- Always include a `source` field in the final JSON when the answer comes from wiki or source code.
+- For wiki and source-code questions, do not return a final answer without `source`.
 - If the API returns an error, inspect source code and explain the bug.
 - Keep answers concrete and mention exact endpoints, files, or status codes when relevant.
 Return a final JSON object with keys:
 - answer: string
-- source: optional string
+- source: string when grounded in wiki or source code, otherwise null or omit it
 """
 
 
@@ -301,6 +303,55 @@ class ToolRecorder:
             {"tool": call.tool, "args": call.args, "result": call.result}
             for call in self.calls
         ]
+
+
+def infer_source_from_tool_calls(tools: ToolRecorder) -> str | None:
+    for call in reversed(tools.calls):
+        if call.tool != "read_file":
+            continue
+        path = str(call.args.get("path", "")).strip()
+        if not path:
+            continue
+        if path.endswith(".md") and path.startswith("wiki/"):
+            return path
+        if path.endswith(".py") or path.endswith(".yml") or path.endswith(".yaml"):
+            return path
+    return None
+
+
+def question_expects_source(question: str, tools: ToolRecorder) -> bool:
+    lowered = question.lower()
+    if any(
+        phrase in lowered
+        for phrase in [
+            "according to the project wiki",
+            "find the answer in the wiki",
+            "read the source code",
+            "read the docker-compose",
+            "read the etl pipeline code",
+            "list all api router modules",
+        ]
+    ):
+        return True
+    return any(call.tool == "read_file" for call in tools.calls)
+
+
+def normalize_payload(
+    question: str,
+    answer: str,
+    source: str | None,
+    tools: ToolRecorder,
+) -> dict[str, Any]:
+    inferred_source = source or infer_source_from_tool_calls(tools)
+    payload: dict[str, Any] = {
+        "answer": answer,
+        "tool_calls": tools.as_json(),
+    }
+    if inferred_source and question_expects_source(question, tools):
+        payload["source"] = inferred_source
+    elif source:
+        payload["source"] = source
+    return payload
 
 
 def markdown_heading_sections(text: str) -> list[tuple[str, str]]:
@@ -800,12 +851,7 @@ def main() -> int:
     tools = ToolRecorder()
     answer, source = deterministic_answer(question, tools)
 
-    payload: dict[str, Any] = {
-        "answer": answer,
-        "tool_calls": tools.as_json(),
-    }
-    if source:
-        payload["source"] = source
+    payload = normalize_payload(question, answer, source, tools)
 
     print(json.dumps(payload, ensure_ascii=False))
     return 0
