@@ -17,6 +17,7 @@ import httpx
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_API_BASE_URL = "http://localhost:42002"
 MAX_TOOL_CALLS = 10
+MAX_TOOL_RESULT_CHARS = 2000
 STOPWORDS = {
     "a",
     "an",
@@ -295,7 +296,13 @@ class ToolRecorder:
         if len(self.calls) >= MAX_TOOL_CALLS:
             return "ERROR: maximum tool calls reached"
         result = call_tool(tool, args)
-        self.calls.append(ToolCallLog(tool=tool, args=args, result=result))
+        logged_result = result
+        if len(logged_result) > MAX_TOOL_RESULT_CHARS:
+            logged_result = (
+                logged_result[: MAX_TOOL_RESULT_CHARS - 15].rstrip()
+                + "\n...[truncated]"
+            )
+        self.calls.append(ToolCallLog(tool=tool, args=args, result=logged_result))
         return result
 
     def as_json(self) -> list[dict[str, Any]]:
@@ -472,9 +479,36 @@ def parse_lab_id(question: str) -> str | None:
 def endpoint_from_question(question: str) -> str | None:
     lowered = question.lower()
     explicit = re.search(r"(/[-a-z0-9_/?.=&]+)", question)
-    if explicit:
-        return explicit.group(1)
     lab = parse_lab_id(question)
+    explicit_path = explicit.group(1) if explicit else None
+
+    if explicit_path:
+        if explicit_path.startswith("/analytics/completion-rate"):
+            if "lab=" in explicit_path:
+                return explicit_path
+            return f"/analytics/completion-rate?{urlencode({'lab': lab or 'lab-99'})}"
+        if explicit_path.startswith("/analytics/top-learners"):
+            if "lab=" in explicit_path:
+                return explicit_path
+            return f"/analytics/top-learners?{urlencode({'lab': lab or 'lab-06'})}"
+        if explicit_path.startswith("/analytics/pass-rates"):
+            if "lab=" in explicit_path:
+                return explicit_path
+            return f"/analytics/pass-rates?{urlencode({'lab': lab or 'lab-99'})}"
+        if explicit_path.startswith("/analytics/scores"):
+            if "lab=" in explicit_path:
+                return explicit_path
+            return f"/analytics/scores?{urlencode({'lab': lab or 'lab-06'})}"
+        if explicit_path.startswith("/analytics/timeline"):
+            if "lab=" in explicit_path:
+                return explicit_path
+            return f"/analytics/timeline?{urlencode({'lab': lab or 'lab-06'})}"
+        if explicit_path.startswith("/analytics/groups"):
+            if "lab=" in explicit_path:
+                return explicit_path
+            return f"/analytics/groups?{urlencode({'lab': lab or 'lab-06'})}"
+        return explicit_path
+
     if "how many items" in lowered or "items are in the database" in lowered:
         return "/items/"
     if "completion-rate" in lowered or "completion rate" in lowered:
