@@ -191,6 +191,13 @@ async def get_completion_rate(
 ):
     """Completion rate for a given lab — percentage of learners who scored >= 60."""
     _, item_ids = await _find_lab_and_tasks(lab, session)
+    if not item_ids:
+        return {
+            "lab": lab,
+            "completion_rate": 0.0,
+            "passed": 0,
+            "total": 0,
+        }
 
     # Count distinct learners with any interaction
     total_stmt = (
@@ -209,7 +216,7 @@ async def get_completion_rate(
     )
     passed_learners = (await session.exec(passed_stmt)).one()
 
-    rate = (passed_learners / total_learners) * 100
+    rate = 0.0 if total_learners == 0 else (passed_learners / total_learners) * 100
 
     return {
         "lab": lab,
@@ -242,12 +249,16 @@ async def get_top_learners(
 
     rows = (await session.exec(stmt)).all()
 
-    ranked = sorted(rows, key=lambda r: r.avg_score, reverse=True)
+    ranked = sorted(
+        rows,
+        key=lambda r: float(r.avg_score) if r.avg_score is not None else -1.0,
+        reverse=True,
+    )
 
     return [
         {
             "learner_id": r.learner_id,
-            "avg_score": round(r.avg_score, 1),
+            "avg_score": round(float(r.avg_score), 1) if r.avg_score is not None else 0.0,
             "attempts": r.attempts,
         }
         for r in ranked[:limit]
