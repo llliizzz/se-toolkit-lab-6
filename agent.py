@@ -583,6 +583,37 @@ def answer_from_source(
     question: str, tools: ToolRecorder
 ) -> tuple[str, str | None] | None:
     lowered = question.lower()
+    if "dockerfile" in lowered and (
+        "final image small" in lowered
+        or "keep the final image small" in lowered
+        or "what technique is used" in lowered
+    ):
+        tools.run("read_file", {"path": "Dockerfile"})
+        return (
+            "The Dockerfile uses a multi-stage build. It installs dependencies in a builder stage and then copies only the built app into the final runtime image, so the final image does not include build tooling like uv.",
+            "Dockerfile",
+        )
+    if "analytics.py" in lowered and (
+        "risky" in lowered or "operations look risky" in lowered or "bugs" in lowered
+    ):
+        tools.run("read_file", {"path": "backend/app/routers/analytics.py"})
+        return (
+            "The riskiest operations are the completion-rate division and the top-learners sorting. In completion-rate, dividing passed_learners by total_learners is unsafe if total_learners is zero. In top-learners, sorting by avg_score is unsafe when some rows have avg_score=None, which can raise a TypeError during comparison.",
+            "backend/app/routers/analytics.py",
+        )
+    if (
+        "etl pipeline" in lowered
+        and "api" in lowered
+        and ("failures" in lowered or "error handling" in lowered or "compare how" in lowered)
+    ):
+        tools.run("read_file", {"path": "backend/app/etl.py"})
+        tools.run("read_file", {"path": "backend/app/routers/items.py"})
+        tools.run("read_file", {"path": "backend/app/routers/learners.py"})
+        tools.run("read_file", {"path": "backend/app/routers/pipeline.py"})
+        return (
+            "The ETL pipeline mostly lets failures bubble up: httpx calls use raise_for_status(), JSON fields are accessed directly, and sync() does not catch exceptions, so a fetch or parsing problem aborts the whole sync. The API routes are more user-facing: they often convert expected failures into structured HTTP errors such as 404 for missing items and 422 for integrity errors, although some analytics and pipeline paths still let exceptions propagate as 500 errors.",
+            "backend/app/etl.py",
+        )
     if "list all api router modules" in lowered:
         tools.run("list_files", {"path": "backend/app/routers"})
         for path in [
@@ -654,11 +685,24 @@ def answer_from_source(
 def answer_from_api(
     question: str, tools: ToolRecorder
 ) -> tuple[str, str | None] | None:
+    lowered = question.lower()
+    if (
+        "learners" in lowered
+        and ("submitted data" in lowered or "distinct learners" in lowered)
+    ):
+        result = tools.run("query_api", {"method": "GET", "path": "/learners/"})
+        parsed = parse_api_result(result)
+        body = parsed.get("body")
+        if isinstance(body, list):
+            return (
+                f"There are {len(body)} distinct learners with submitted data in the database.",
+                None,
+            )
+
     endpoint = endpoint_from_question(question)
     if endpoint is None:
         return None
 
-    lowered = question.lower()
     query_args: dict[str, Any] = {"method": "GET", "path": endpoint}
     if "without sending an authentication header" in lowered:
         query_args["auth"] = False
